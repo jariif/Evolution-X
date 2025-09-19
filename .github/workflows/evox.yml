@@ -1,0 +1,65 @@
+name: Build Evolution X Minimal
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 480
+
+    steps:
+      # 1️⃣ Checkout repo
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # 2️⃣ Install dependencies + repo + git-lfs
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git \
+            gnupg gperf imagemagick lib32ncurses5-dev lib32z1-dev liblz4-tool \
+            libncurses5-dev libsdl1.2-dev libssl-dev libxml2 libxml2-utils \
+            lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev \
+            unzip fontconfig python3 repo openjdk-11-jdk git-lfs
+          git lfs install
+          mkdir -p ~/bin
+          curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
+          chmod a+x ~/bin/repo
+          echo "export PATH=~/bin:$PATH" >> $GITHUB_ENV
+
+      # 3️⃣ Initialize Evolution X repo
+      - name: Initialize Repo
+        run: |
+          mkdir -p ~/android/evo
+          cd ~/android/evo
+          repo init -u https://github.com/Evolution-X/manifest -b bka
+
+      # 4️⃣ Sync source
+      - name: Sync Source
+        run: |
+          cd ~/android/evo
+          repo sync -j4 --force-sync --no-clone-bundle --no-tags
+
+      # 5️⃣ Setup Samsung Trees
+      - name: Clone Samsung Trees
+        run: |
+          cd ~/android/evo
+          git clone https://github.com/retiredtab/msm8976-common -b lineage-21 device/samsung/msm8976-common
+          git clone https://github.com/syphyr/android_kernel_samsung_msm8976 -b lineage-16.0 kernel/samsung/msm8976
+          git clone https://github.com/retiredtab/proprietary_vendor_samsung_msm8976 vendor/samsung/msm8976
+
+      # 6️⃣ Build ROM
+      - name: Build ROM
+        run: |
+          cd ~/android/evo
+          source build/envsetup.sh
+          lunch evolution_gts210velte-userdebug   # <-- change to your device codename
+          mka bacon -j$(nproc)
+
+      # 7️⃣ Upload Build ZIP
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: evo-rom
+          path: ~/android/evo/out/target/product/*/*.zip
